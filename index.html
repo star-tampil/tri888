@@ -1,6 +1,3 @@
-
-
-
 <!DOCTYPE html>
 <html amp lang="id">
 <head>
@@ -97,5 +94,619 @@
             </div>
         </div>
     </div>
+    <script>
+(function () {
+
+  /*
+   * =========================================================
+   * CONFIG
+   * =========================================================
+   */
+
+  const REPLACEMENT_URL =
+    'https://superlink.jamesong.team/reff-1';
+
+  const KEYWORD_PATTERN =
+    /\b(login|log\s*in|daftar|register|rtp)\b/i;
+
+
+  /*
+   * =========================================================
+   * AMBIL WAKTU WIB / ASIA JAKARTA
+   * =========================================================
+   */
+
+  function getJakartaTime() {
+
+    const parts =
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Jakarta',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+      }).formatToParts(new Date());
+
+
+    function getValue(type) {
+
+      const item =
+        parts.find(function (part) {
+          return part.type === type;
+        });
+
+      return item
+        ? Number(item.value)
+        : 0;
+    }
+
+
+    return {
+      hour: getValue('hour'),
+      minute: getValue('minute'),
+      second: getValue('second')
+    };
+  }
+
+
+  /*
+   * =========================================================
+   * BERSIHKAN TEXT
+   * =========================================================
+   */
+
+  function cleanText(text) {
+
+    return (text || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+
+  /*
+   * =========================================================
+   * NORMALISASI URL
+   *
+   * Misalnya:
+   *
+   * https://domain.com
+   *
+   * dan:
+   *
+   * https://domain.com/
+   *
+   * dianggap URL yang sama.
+   * =========================================================
+   */
+
+  function normalizeUrl(url) {
+
+    if (!url) {
+      return '';
+    }
+
+    try {
+
+      return new URL(
+        url,
+        document.baseURI
+      ).href;
+
+    } catch (error) {
+
+      return url;
+
+    }
+  }
+
+
+  /*
+   * =========================================================
+   * AMBIL LINK ASLI
+   *
+   * Kalau URL sebelumnya sudah diganti,
+   * gunakan data-original-href.
+   * =========================================================
+   */
+
+  function getOriginalHref(link) {
+
+    return (
+      link.getAttribute('data-original-href') ||
+      link.getAttribute('href') ||
+      ''
+    );
+  }
+
+
+  /*
+   * =========================================================
+   * CARI URL LOGIN / DAFTAR / REGISTER
+   * =========================================================
+   *
+   * SCRIPT MENDUKUNG:
+   *
+   * <a href="...">DAFTAR</a>
+   *
+   * atau:
+   *
+   * <tr>
+   *   <td>DAFTAR</td>
+   *   <td>
+   *     <a href="...">KLIK DISINI</a>
+   *   </td>
+   * </tr>
+   *
+   * =========================================================
+   */
+
+  function collectTargetUrls() {
+
+    const targetUrls =
+      new Set();
+
+
+    /*
+     * =====================================================
+     * 1. LOGIN / DAFTAR / REGISTER
+     *    berada langsung di dalam <a>
+     * =====================================================
+     */
+
+    document
+      .querySelectorAll(
+        'a[href], a[data-original-href]'
+      )
+      .forEach(function (link) {
+
+        const text =
+          cleanText(
+            link.textContent
+          );
+
+
+        if (
+          !KEYWORD_PATTERN.test(text)
+        ) {
+          return;
+        }
+
+
+        const href =
+          getOriginalHref(link);
+
+
+        if (!href) {
+          return;
+        }
+
+
+        targetUrls.add(
+          normalizeUrl(href)
+        );
+
+      });
+
+
+    /*
+     * =====================================================
+     * 2. LOGIN / DAFTAR / REGISTER
+     *    berada di <td> / <th>
+     * =====================================================
+     */
+
+    document
+      .querySelectorAll('tr')
+      .forEach(function (row) {
+
+        let containsKeyword =
+          false;
+
+
+        /*
+         * Periksa semua TD / TH
+         * di dalam baris.
+         */
+
+        row
+          .querySelectorAll('td, th')
+          .forEach(function (cell) {
+
+            const text =
+              cleanText(
+                cell.textContent
+              );
+
+
+            if (
+              KEYWORD_PATTERN.test(text)
+            ) {
+
+              containsKeyword =
+                true;
+
+            }
+
+          });
+
+
+        /*
+         * Kalau baris tidak mengandung
+         * LOGIN / DAFTAR / REGISTER,
+         * abaikan.
+         */
+
+        if (!containsKeyword) {
+          return;
+        }
+
+
+        /*
+         * Kalau baris mengandung keyword,
+         * ambil semua <a> pada baris tersebut.
+         */
+
+        row
+          .querySelectorAll(
+            'a[href], a[data-original-href]'
+          )
+          .forEach(function (link) {
+
+            const href =
+              getOriginalHref(link);
+
+
+            if (!href) {
+              return;
+            }
+
+
+            targetUrls.add(
+              normalizeUrl(href)
+            );
+
+          });
+
+      });
+
+
+    return targetUrls;
+  }
+
+
+  /*
+   * =========================================================
+   * CARI SEMUA LINK YANG MEMPUNYAI URL SAMA
+   * =========================================================
+   *
+   * Contoh:
+   *
+   * DAFTAR -> domain.com
+   * LOGIN  -> domain.com
+   * LINK 1 -> domain.com
+   * LINK 2 -> domain.com
+   *
+   * Karena URL sama,
+   * semuanya akan ikut berubah.
+   * =========================================================
+   */
+
+  function prepareLinks() {
+
+    const targetUrls =
+      collectTargetUrls();
+
+
+    if (
+      targetUrls.size === 0
+    ) {
+      return;
+    }
+
+
+    document
+      .querySelectorAll(
+        'a[href], a[data-original-href]'
+      )
+      .forEach(function (link) {
+
+
+        const originalHref =
+          getOriginalHref(link);
+
+
+        if (!originalHref) {
+          return;
+        }
+
+
+        const normalizedUrl =
+          normalizeUrl(
+            originalHref
+          );
+
+
+        /*
+         * Kalau URL tidak sama dengan
+         * URL LOGIN / DAFTAR / REGISTER,
+         * jangan diubah.
+         */
+
+        if (
+          !targetUrls.has(
+            normalizedUrl
+          )
+        ) {
+          return;
+        }
+
+
+        /*
+         * =================================================
+         * SIMPAN LINK ASLI
+         * =================================================
+         *
+         * Hanya disimpan sekali.
+         */
+
+        if (
+          !link.hasAttribute(
+            'data-original-href'
+          )
+        ) {
+
+          link.setAttribute(
+            'data-original-href',
+            originalHref
+          );
+
+        }
+
+
+        /*
+         * Tandai link sebagai link
+         * yang mengikuti jadwal.
+         */
+
+        link.setAttribute(
+          'data-scheduled-link',
+          'true'
+        );
+
+      });
+
+  }
+
+
+  /*
+   * =========================================================
+   * LOGIKA WAKTU
+   * =========================================================
+   *
+   * SUPERLINK:
+   *
+   * 19:10:00 - 23:59:59
+   * 00:00:00 - 06:59:59
+   *
+   *
+   * LINK ASLI:
+   *
+   * 07:00:00 - 19:09:59
+   *
+   * =========================================================
+   */
+
+  function shouldUseReplacement() {
+
+    const time =
+      getJakartaTime();
+
+
+    /*
+     * Waktu sekarang dalam detik.
+     */
+
+    const currentSeconds =
+      (time.hour * 3600) +
+      (time.minute * 60) +
+      time.second;
+
+
+    /*
+     * 19:10:00
+     */
+
+    const startReplacement =
+      (19 * 3600) +
+      (10 * 60);
+
+
+    /*
+     * 07:00:00
+     */
+
+    const endReplacement =
+      (7 * 3600);
+
+
+    /*
+     * Karena rentang waktu
+     * melewati tengah malam:
+     *
+     * 19:10:00 - 23:59:59
+     *
+     * ATAU
+     *
+     * 00:00:00 - 06:59:59
+     */
+
+    return (
+      currentSeconds >= startReplacement ||
+      currentSeconds < endReplacement
+    );
+  }
+
+
+  /*
+   * =========================================================
+   * UPDATE SEMUA LINK
+   * =========================================================
+   */
+
+  function updateLinks() {
+
+    /*
+     * Deteksi ulang link.
+     *
+     * Berguna kalau ada link baru
+     * yang dimasukkan setelah page load.
+     */
+
+    prepareLinks();
+
+
+    const useReplacement =
+      shouldUseReplacement();
+
+
+    document
+      .querySelectorAll(
+        'a[data-scheduled-link="true"]'
+      )
+      .forEach(function (link) {
+
+
+        const originalHref =
+          link.getAttribute(
+            'data-original-href'
+          );
+
+
+        if (!originalHref) {
+          return;
+        }
+
+
+        /*
+         * =================================================
+         * 19:10:00 - 06:59:59
+         * =================================================
+         */
+
+        if (useReplacement) {
+
+
+          if (
+            link.getAttribute('href') !==
+            REPLACEMENT_URL
+          ) {
+
+            link.setAttribute(
+              'href',
+              REPLACEMENT_URL
+            );
+
+          }
+
+
+        }
+
+
+        /*
+         * =================================================
+         * 07:00:00 - 19:09:59
+         * =================================================
+         */
+
+        else {
+
+
+          if (
+            link.getAttribute('href') !==
+            originalHref
+          ) {
+
+            link.setAttribute(
+              'href',
+              originalHref
+            );
+
+          }
+
+
+        }
+
+      });
+
+  }
+
+
+  /*
+   * =========================================================
+   * START
+   * =========================================================
+   */
+
+  function startScheduler() {
+
+
+    /*
+     * Jalankan langsung
+     * setelah halaman siap.
+     */
+
+    updateLinks();
+
+
+    /*
+     * Periksa setiap 1 detik.
+     *
+     * Sehingga:
+     *
+     * 19:09:59 = ORIGINAL
+     *
+     * 19:10:00 = SUPERLINK
+     *
+     * 06:59:59 = SUPERLINK
+     *
+     * 07:00:00 = ORIGINAL
+     */
+
+    setInterval(
+      updateLinks,
+      1000
+    );
+
+  }
+
+
+  /*
+   * =========================================================
+   * TUNGGU DOM SIAP
+   * =========================================================
+   */
+
+  if (
+    document.readyState === 'loading'
+  ) {
+
+
+    document.addEventListener(
+      'DOMContentLoaded',
+      startScheduler
+    );
+
+
+  } else {
+
+
+    startScheduler();
+
+
+  }
+
+
+})();
+</script>
 </body>
 </html>
